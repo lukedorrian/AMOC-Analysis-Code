@@ -1,0 +1,50 @@
+#!/bin/bash
+#SBATCH -Jjob_submit
+#SBATCH --account=gts-yfu347
+#SBATCH -N1 --ntasks-per-node=1
+#SBATCH -t120
+#SBATCH --mem-per-cpu=256G
+#SBATCH -qinferno
+#SBATCH -oReport-%j_CDO_CESM2_report.out
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=ldorrian3@gatech.edu
+cd $SLURM_SUBMIT_DIR                            # Change to working directory
+module load anaconda3
+conda activate cdo_env
+#would be great to write modelname as a variable
+MODELNAME=CESM2
+
+#merging timesets
+#when switching to a new model, important to make sure the variabile names match the formats described below:
+cdo mergetime ~/shared/CMIP6/$MODELNAME/uo_Omon_CESM2_historical_r1i1p1f1_gn_ATL0000*.nc ~/scratch/MergedFiles/$MODELNAME/uo_${MODELNAME}_merged.nc
+cdo mergetime ~/shared/CMIP6/$MODELNAME/vo_Omon*.nc ~/scratch/MergedFiles/$MODELNAME/vo_${MODELNAME}_merged.nc
+cdo mergetime ~/shared/CMIP6/$MODELNAME/so_Omon*.nc ~/scratch/MergedFiles/$MODELNAME/so_${MODELNAME}_merged.nc
+cdo mergetime ~/shared/CMIP6/$MODELNAME/thetao_Omon*.nc ~/scratch/MergedFiles/$MODELNAME/thetao_${MODELNAME}_merged.nc
+
+#only need to merge files below if initial input files for hfds,evs,pr are separated, most models do not have separated files for these surface variables
+#cdo mergetime ~/shared/CMIP6/$MODELNAME/evs_Omon*.nc ~/scratch/MergedFiles/$MODELNAME/evs_${MODELNAME}_merged.nc
+#cdo mergetime ~/shared/CMIP6/$MODELNAME/pr_Amon*.nc ~/scratch/MergedFiles/$MODELNAME/pr_${MODELNAME}_merged.nc
+#cdo mergetime ~/shared/CMIP6/$MODELNAME/hfds_Omon*.nc ~/scratch/MergedFiles/$MODELNAME/hfds_${MODELNAME}_merged.nc
+
+#now to regrid, EC Earth is curvilinear
+cdo remapbil,grid_ATL_50km.txt ~/shared/CMIP6/$MODELNAME/evs*.nc ~/scratch/MergedFiles/$MODELNAME/evs_${MODELNAME}_regridded.nc
+cdo remapbil,grid_ATL_50km.txt ~/shared/CMIP6/$MODELNAME/hfds*.nc ~/scratch/MergedFiles/$MODELNAME/hfds_${MODELNAME}_regridded.nc
+cdo remapbil,grid_ATL_50km.txt ~/shared/CMIP6/$MODELNAME/pr*.nc ~/scratch/MergedFiles/$MODELNAME/pr_${MODELNAME}_regridded.nc
+
+cdo remapbil,grid_ATL_50km.txt ~/scratch/MergedFiles/$MODELNAME/uo_${MODELNAME}_merged.nc ~/scratch/MergedFiles/$MODELNAME/uo_${MODELNAME}_merged_regridded.nc
+cdo remapbil,grid_ATL_50km.txt ~/scratch/MergedFiles/$MODELNAME/vo_${MODELNAME}_merged.nc ~/scratch/MergedFiles/$MODELNAME/vo_${MODELNAME}_merged_regridded.nc
+cdo remapbil,grid_ATL_50km.txt ~/scratch/MergedFiles/$MODELNAME/so_${MODELNAME}_merged.nc ~/scratch/MergedFiles/$MODELNAME/so_${MODELNAME}_merged_regridded.nc
+cdo remapbil,grid_ATL_50km.txt ~/scratch/MergedFiles/$MODELNAME/thetao_${MODELNAME}_merged.nc ~/scratch/MergedFiles/$MODELNAME/thetao_${MODELNAME}_merged_regridded.nc
+
+#selecting atlantic, although not necessary after the regrid above, keep as reference
+#cdo sellonlatbox,-65,-5,49,67 ~/scratch/MergedFiles/EC-Earth/evs_EC_Earth3_merged_regridded.nc ~/scratch/MergedFiles/EC-Earth/evs_EC_Earth3_merged_regridded.nc
+
+#writing to subselect
+#Dont need to subsample evs,pr,hfds because they are already sufficiently small
+#Attempting to split large files into 5 of each ensemble
+cdo -splitsel,396 ~/scratch/MergedFiles/$MODELNAME/vo_${MODELNAME}_merged_regridded.nc ~/scratch/MergedFiles/$MODELNAME/vo_${MODELNAME}_regridded_subset_
+cdo -splitsel,396 ~/scratch/MergedFiles/$MODELNAME/uo_${MODELNAME}_merged_regridded.nc ~/scratch/MergedFiles/$MODELNAME/uo_${MODELNAME}_regridded_subset_
+cdo -splitsel,396 ~/scratch/MergedFiles/$MODELNAME/so_${MODELNAME}_merged_regridded.nc ~/scratch/MergedFiles/$MODELNAME/so_${MODELNAME}_regridded_subset_
+cdo -splitsel,396 ~/scratch/MergedFiles/$MODELNAME/thetao_${MODELNAME}_merged_regridded.nc ~/scratch/MergedFiles/$MODELNAME/thetao_${MODELNAME}_regridded_subset_
+
+#make sure to delete any files with 'merged' in their names, these are ultimately unnecessary after full processing, and are very large
